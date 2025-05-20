@@ -1,5 +1,7 @@
 import numpy as np
 from sklearn.metrics import mean_squared_error
+import networkx as nx
+import matplotlib.pyplot as plt
 
 class FNNRegressor:
     def __init__(self, d, phi, d_phi, nabla=0.01, max_iter=1000, eps=1e-3, seed=0):
@@ -126,7 +128,10 @@ class FNNRegressor:
             Xf = self._forward(x)
             out = [Xf[self.L, j] for j in range(1, self.d[self.L]+1)]
             ys.append(out)
-        return np.array(ys)
+        res = np.array(ys)
+        if res.shape[1] == 1:
+            return res.flatten()
+        return res
 
     def score(self, X, y):
         y_pred = self.predict(X)
@@ -139,7 +144,7 @@ class FNNRegressor:
         print(self.__repr__())
         print("Weights (partial):")
         for key in list(self.W)[:5]:
-            print(f"{key}: {self.W[key]:.4f}")
+            print(f"{key}: {self.W[key].round(4)}")
 
     def render(self):
         # Simple textual network summary
@@ -147,3 +152,43 @@ class FNNRegressor:
         print(f" Layers: {self.d}")
         total_params = sum(self.d[l]*self.d[l-1] + self.d[l] for l in range(1, self.L+1))
         print(f" Total parameters: {total_params}")
+
+    def plot(self):
+        G = nx.DiGraph()
+        pos = {}
+        node_labels = {}
+        edge_labels = {}
+
+        # Create nodes with biases
+        node_id = 0
+        layer_start = {0:0}
+        for l in range(len(self.d)):
+            layer_start[l] = node_id
+            for j in range(self.d[l]):
+                G.add_node(node_id)
+                pos[node_id] = (l, -j)
+                # bias for input layer is None
+                if l > 0:
+                    b = self.B.get((l, j+1), 0)
+                    node_labels[node_id] = f"{l},{j}\nb={b.round(2)}"
+                else:
+                    node_labels[node_id] = f"0,{j}"
+                node_id += 1
+
+        # Create edges with weights
+        for l in range(1, len(self.d)):
+            for j in range(self.d[l]):
+                for i in range(self.d[l-1]):
+                    src = layer_start[l-1] + i
+                    dst = layer_start[l] + j
+                    w = self.W.get((l, i+1, j+1), 0)
+                    G.add_edge(src, dst)
+                    edge_labels[(src, dst)] = f"{w.round(2)}"
+
+        plt.figure(figsize=(10, 6))
+        nx.draw(G, pos, labels=node_labels, with_labels=True,
+                node_size=2000, arrows=True, node_color='lightblue', font_size=8)
+        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
+        plt.title("FNNRegressor Architecture (W & B values)")
+        plt.axis('off')
+        plt.show()
